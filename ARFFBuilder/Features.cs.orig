@@ -1,0 +1,112 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.IO;
+using System.Text.RegularExpressions;
+using Bakalarka.Entity;
+
+
+namespace Bakalarka
+{
+    public class Features : SettingsObject
+    {
+        private List<MedicalReport> reports;        
+
+        private UnigramCollection unigrams;
+        private BigramCollection bigrams;
+
+        public Features(Settings settings, List<MedicalReport> reports)
+            : base(settings)
+        {
+            this.reports = reports;            
+        }
+
+        private void InitUnigrams()
+        {
+            if (!settings.HasChanged) return;
+            unigrams = new UnigramCollection(settings);
+            unigrams.BuildAll(reports);
+        }
+
+        private void InitBigrams()
+        {
+            if (!settings.HasChanged) return;
+            bigrams = new BigramCollection(settings);
+            bigrams.BuildAll(reports);
+        }
+
+        public List<FAttribute> BuildFeatures()
+        {
+            if (settings.LoadFeatures) return LoadFeaturesFromARFF(settings.FeaturesFile);
+
+            var all = new List<FAttribute>();
+
+            if (settings.Features.ContainsKey(FeaturesEnum.Unigrams))
+            {                
+                InitUnigrams();
+                var tps = settings.Features[FeaturesEnum.Unigrams];
+                all.AddRange(unigrams.GetSortedBySettings(tps.MaxCount, tps.MinFrequency)); 
+            }
+
+            if (settings.Features.ContainsKey(FeaturesEnum.Bigrams))
+            {
+                InitBigrams();
+                var bs = settings.Features[FeaturesEnum.Bigrams];                
+                all.AddRange(bigrams.GetSortedBySettings(bs.MaxCount, bs.MinFrequency));
+            }
+
+            return all;
+        }
+        
+        public List<FAttribute> BuildAllUnigrams()
+        {
+            InitUnigrams();
+            return unigrams.GetAllAtributes();
+        }
+
+        private List<FAttribute> LoadFeaturesFromARFF(string fileName)
+        {
+            List<FAttribute> fattributes = new List<FAttribute>();
+
+            using (StreamReader reader = File.OpenText(fileName))
+            {
+                string relation = "";
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    line = line.Trim();
+                    if (line.StartsWith("@DATA"))
+                        break;
+                    if (line.StartsWith("@RELATION"))
+                    {
+                        var sa = line.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (sa.Length != 2) continue;
+                        relation = Utils.StringUtils.TrimQuotes(sa[1]);
+                    }
+
+
+
+                    var a = Regex.Match(line, ".*@ATTRIBUTE[ \t]+(.*)[ \t]+{");
+                    if (!a.Success) continue;
+
+                    string attributeName = Utils.StringUtils.TrimQuotes(a.Groups[1].Value);
+                    if (attributeName == relation) continue;
+
+                    switch (FAttribute.GetAttributeType(attributeName))
+                    {
+                        case FeaturesEnum.Bigrams:
+                            fattributes.Add(new Bigram(attributeName));
+                            break;
+                        case FeaturesEnum.Unigrams:
+                            fattributes.Add(new Unigram(attributeName));
+                            break;
+                    }
+                }
+            }
+
+            return fattributes;
+        }
+
+    }
+}

@@ -1,0 +1,6 @@
+*.user
+ARFFBuilder/bin/
+ARFFBuilder/obj/
+Utils/Random/bin/
+Utils/Random/obj/
+*.suo
